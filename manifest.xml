@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+<iq:manifest version="3" xmlns:iq="http://www.garmin.com/xml/connectiq">
+    <!-- Audio Content Provider: shows up under the watch's Music sources. -->
+    <iq:application id="d78ca26a554c4a1c9ba9150d1bb1b68e"
+                    type="audio-content-provider-app"
+                    name="@Strings.AppName"
+                    entry="PodcastSyncApp"
+                    launcherIcon="@Drawables.LauncherIcon"
+                    minApiLevel="4.2.4">
+        <iq:products>
+            <iq:product id="fenix843mm"/>
+            <iq:product id="fenix847mm"/>
+            <iq:product id="fenix8solar47mm"/>
+            <iq:product id="fenix8solar51mm"/>
+            <iq:product id="fenix8pro47mm"/>
+            <iq:product id="fenix943mm"/>
+            <iq:product id="fenix947mm"/>
+            <iq:product id="fenix9pro43mm"/>
+            <iq:product id="fenix9pro47mm"/>
+            <iq:product id="fenix9pro51mm"/>
+            <iq:product id="fenix9prosolar47mm"/>
+            <iq:product id="fenix9prosolar51mm"/>
+            <iq:product id="epix2"/>
+            <iq:product id="epix2pro42mm"/>
+            <iq:product id="epix2pro47mm"/>
+            <iq:product id="epix2pro51mm"/>
+            <iq:product id="fr965"/>
+            <iq:product id="fr970"/>
+        </iq:products>
+        <iq:permissions>
+            <iq:uses-permission id="Communications"/>
+        </iq:permissions>
+        <iq:languages>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+        <iq:barrels/>
+    </iq:application>
+</iq:manifest>

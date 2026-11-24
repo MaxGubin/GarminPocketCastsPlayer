@@ -1,0 +1,6 @@
+<strings>
+    <string id="AppName">Podcast Sync</string>
+    <string id="EmailTitle">Pocket Casts email</string>
+    <string id="PasswordTitle">Pocket Casts password</string>
+    <string id="CountTitle">Episodes to sync from Up Next</string>
+</strings>
