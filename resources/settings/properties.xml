@@ -2,4 +2,11 @@
     <property id="email" type="string"></property>
     <property id="password" type="string"></property>
     <property id="episodeCount" type="number">5</property>
+    <!-- Play speed in percent (100 = 1.0x); applied by the speed server -->
+    <property id="playSpeed" type="number">100</property>
+    <!-- MP3 bitrate in kbps for episodes converted by the speed server -->
+    <property id="bitrate" type="number">64</property>
+    <!-- Speed server (server/). Empty URL or key = download original files. -->
+    <property id="serviceUrl" type="string">https://podcast-speed-372776594257.us-central1.run.app</property>
+    <property id="serviceKey" type="string"></property>
 </properties>

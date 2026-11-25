@@ -8,4 +8,25 @@
     <setting propertyKey="@Properties.episodeCount" title="@Strings.CountTitle">
         <settingConfig type="numeric" min="1" max="20"/>
     </setting>
+    <setting propertyKey="@Properties.playSpeed" title="@Strings.SpeedTitle">
+        <settingConfig type="list">
+            <listEntry value="100">@Strings.Speed100</listEntry>
+            <listEntry value="125">@Strings.Speed125</listEntry>
+            <listEntry value="150">@Strings.Speed150</listEntry>
+            <listEntry value="175">@Strings.Speed175</listEntry>
+            <listEntry value="200">@Strings.Speed200</listEntry>
+        </settingConfig>
+    </setting>
+    <setting propertyKey="@Properties.bitrate" title="@Strings.BitrateTitle">
+        <settingConfig type="list">
+            <listEntry value="64">@Strings.Bitrate64</listEntry>
+            <listEntry value="128">@Strings.Bitrate128</listEntry>
+        </settingConfig>
+    </setting>
+    <setting propertyKey="@Properties.serviceUrl" title="@Strings.ServiceUrlTitle">
+        <settingConfig type="alphaNumeric"/>
+    </setting>
+    <setting propertyKey="@Properties.serviceKey" title="@Strings.ServiceKeyTitle">
+        <settingConfig type="password"/>
+    </setting>
 </settings>

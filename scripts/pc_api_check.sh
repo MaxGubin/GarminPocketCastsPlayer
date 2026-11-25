@@ -26,6 +26,14 @@ DETAIL=$(curl -sS -X POST "$API/user/episode" -H 'Content-Type: application/json
 echo "response bytes: ${#DETAIL}"
 jq -c '{title, playingStatus, playedUpTo, duration, fileType}' <<<"$DETAIL"
 
+echo "== play state of every Up Next episode (what the watch sync sees)"
+echo "   playingStatus: 1 = not played, 2 = in progress, 3 = played (skipped by the watch)"
+jq -c '.episodes[] | {uuid, podcast, title}' <<<"$UPNEXT" | while read -r EP; do
+  D=$(curl -sS -X POST "$API/user/episode" -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" \
+    --data "$(jq -c '{uuid, podcast}' <<<"$EP")")
+  jq -r --argjson e "$EP" '"status=\(.playingStatus // "?")  at \(.playedUpTo // 0)s of \(.duration // "?")s  \(.fileType // "?")  \($e.title)"' <<<"$D"
+done
+
 if [ "${PC_TEST_UPDATE:-0}" = 1 ]; then
   echo "== sync/update_episode (re-sends the current position and status, no change)"
   BODY=$(jq -c --argjson f "$FIRST" '{uuid:$f.uuid, podcast:$f.podcast, position:(.playedUpTo // 0), status:(.playingStatus // 1)}' <<<"$DETAIL")

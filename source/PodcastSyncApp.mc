@@ -13,8 +13,10 @@ class PodcastSyncApp extends Application.AudioContentProviderApp {
         AudioContentProviderApp.initialize();
     }
 
+    // arg: ContentRef id of the episode to start with (from the Episodes
+    // menu), or null to continue with the last played episode.
     function getContentDelegate(arg) {
-        return new PodcastContentDelegate();
+        return new PodcastContentDelegate(arg);
     }
 
     function getSyncDelegate() {
@@ -26,6 +28,10 @@ class PodcastSyncApp extends Application.AudioContentProviderApp {
     }
 
     function getPlaybackConfigurationView() {
+        // Already playing: go straight back to the player instead of the menu.
+        if (EpisodeStore.isPlaying() && EpisodeStore.getPlayable().size() > 0) {
+            return [new OpenPlayerView(), new WatchUi.BehaviorDelegate()];
+        }
         return [new PlayerMenu(), new PlayerMenuDelegate()];
     }
 

@@ -54,6 +54,10 @@ class SyncJob {
     hidden var _toDownload;      // indices into _targets
     hidden var _dlIdx = 0;
     hidden var _failed = 0;
+    hidden var _speed = 100;     // wanted speed in percent (settings)
+    hidden var _kbps = 64;       // wanted bitrate (settings)
+    hidden var _viaService = false;  // current download goes through the speed service
+    hidden var _serviceError = null; // last speed server error code this sync
 
     function initialize() {
         _api = new PocketCastsApi();
@@ -180,6 +184,10 @@ class SyncJob {
         if (_remote == null) { _remote = []; }
         _max = Application.Properties.getValue("episodeCount");
         if (_max == null || _max < 1) { _max = 5; }
+        _speed = Application.Properties.getValue("playSpeed");
+        if (_speed == null || _speed < 50 || _speed > 300) { _speed = 100; }
+        _kbps = Application.Properties.getValue("bitrate");
+        if (_kbps == null || _kbps < 32 || _kbps > 128) { _kbps = 64; }
         _old = EpisodeStore.getEpisodes();
         _targets = [];
         _remoteIdx = 0;
@@ -238,8 +246,24 @@ class SyncJob {
     hidden function reconcile() {
         // Free space: drop cached audio for episodes that left the queue or were played.
         for (var i = 0; i < _old.size(); i++) {
-            if (_old[i]["ref"] != null && EpisodeStore.findByUuid(_targets, _old[i]["uuid"]) == null) {
-                Media.deleteCachedItem(new Media.ContentRef(_old[i]["ref"], Media.CONTENT_TYPE_AUDIO));
+            if (EpisodeStore.findByUuid(_targets, _old[i]["uuid"]) == null) {
+                // "oldRef" is left over if a re-download was interrupted.
+                var refs = [_old[i]["ref"], _old[i]["oldRef"]];
+                for (var j = 0; j < refs.size(); j++) {
+                    if (refs[j] != null) {
+                        Media.deleteCachedItem(new Media.ContentRef(refs[j], Media.CONTENT_TYPE_AUDIO));
+                    }
+                }
+            }
+        }
+        // Files made with other speed/bitrate settings are downloaded again.
+        // The old file stays playable ("oldRef") until the new one arrives.
+        for (var i = 0; i < _targets.size(); i++) {
+            var ep = _targets[i];
+            if (ep["ref"] != null && needsNewFile(ep)) {
+                log("settings changed, re-download " + ep["title"]);
+                ep["oldRef"] = ep["ref"];
+                ep["ref"] = null;
             }
         }
         EpisodeStore.setEpisodes(_targets);
@@ -263,13 +287,30 @@ class SyncJob {
             return;
         }
         var ep = _targets[_toDownload[_dlIdx]];
-        log("download " + ep["title"]);
-        Communications.makeWebRequest(ep["url"], null, {
-            :method => Communications.HTTP_REQUEST_METHOD_GET,
-            :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_AUDIO,
-            :mediaEncoding => encodingFor(ep),
-            :fileDownloadProgressCallback => method(:onDownloadProgress)
-        }, method(:onDownloaded));
+        _viaService = _api.hasAudioService();
+        startDownload(ep);
+    }
+
+    hidden function startDownload(ep) {
+        if (_viaService) {
+            log("download " + ep["title"] + " via service at " + _speed + "% " + _kbps + " kbps");
+            _api.downloadConverted(ep["url"], _speed, _kbps,
+                method(:onDownloadProgress), method(:onDownloaded));
+        } else {
+            log("download " + ep["title"] + " (original)");
+            _api.downloadOriginal(ep["url"], encodingFor(ep),
+                method(:onDownloadProgress), method(:onDownloaded));
+        }
+    }
+
+    // A file must be replaced if it doesn't match the current settings.
+    // Originals downloaded as a fallback (service unreachable) are retried
+    // through the service on each sync, while it's configured.
+    hidden function needsNewFile(ep) {
+        if (!_api.hasAudioService()) {
+            return false;   // no service: keep whatever we have
+        }
+        return EpisodeStore.speedOf(ep) != _speed || ep["kbps"] != _kbps;
     }
 
     function onDownloadProgress(bytes as Number, total as Number?) as Void {
@@ -281,14 +322,45 @@ class SyncJob {
     function onDownloaded(code as Number, data as Null or ByteArray or Dictionary or String or PersistedContent.Iterator) as Void {
         if (_cancelled) { return; }
         log("download -> " + code);
+        var ep = _targets[_toDownload[_dlIdx]];
         if (code == 200 && data != null) {
-            _targets[_toDownload[_dlIdx]]["ref"] = (data as Media.ContentRef).getId();
+            ep["ref"] = (data as Media.ContentRef).getId();
+            ep["speed"] = _viaService ? _speed : 100;
+            ep["kbps"] = _viaService ? _kbps : null;
+            if (ep["oldRef"] != null) {
+                Media.deleteCachedItem(new Media.ContentRef(ep["oldRef"], Media.CONTENT_TYPE_AUDIO));
+                ep.remove("oldRef");
+            }
             EpisodeStore.setEpisodes(_targets);
+        } else if (_viaService) {
+            // Service unreachable or failed: fall back to the original file.
+            log("service failed (" + code + "), falling back to original");
+            _serviceError = code;
+            _viaService = false;
+            if (ep["oldRef"] != null) {
+                // An older file exists; keep it rather than downloading the original.
+                restoreOld(ep);
+                _dlIdx++;
+                downloadNext();
+            } else {
+                startDownload(ep);
+            }
+            return;
         } else {
+            restoreOld(ep);
             _failed++;
         }
         _dlIdx++;
         downloadNext();
+    }
+
+    // Re-download failed: keep playing the previous file.
+    hidden function restoreOld(ep) {
+        if (ep["oldRef"] != null) {
+            ep["ref"] = ep["oldRef"];
+            ep.remove("oldRef");
+            EpisodeStore.setEpisodes(_targets);
+        }
     }
 
     hidden function encodingFor(ep) {
@@ -322,7 +394,8 @@ class SyncJob {
             "downloaded" => _toDownload.size() - _failed,
             "failed" => _failed,
             "onWatch" => onWatch,
-            "queued" => _targets.size()
+            "queued" => _targets.size(),
+            "serviceError" => _serviceError
         });
         if (_failed > 0) {
             var msg = "Downloaded " + (_toDownload.size() - _failed) + " of "

@@ -3,4 +3,15 @@
     <string id="EmailTitle">Pocket Casts email</string>
     <string id="PasswordTitle">Pocket Casts password</string>
     <string id="CountTitle">Episodes to sync from Up Next</string>
+    <string id="SpeedTitle">Play speed</string>
+    <string id="Speed100">1.0x</string>
+    <string id="Speed125">1.25x</string>
+    <string id="Speed150">1.5x</string>
+    <string id="Speed175">1.75x</string>
+    <string id="Speed200">2.0x</string>
+    <string id="BitrateTitle">Compression rate (MP3 bitrate)</string>
+    <string id="Bitrate64">64 kbps (smaller files)</string>
+    <string id="Bitrate128">128 kbps (higher quality)</string>
+    <string id="ServiceUrlTitle">Speed server URL</string>
+    <string id="ServiceKeyTitle">Speed server API key</string>
 </strings>

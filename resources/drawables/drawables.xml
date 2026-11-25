@@ -1,3 +1,6 @@
 <drawables>
     <bitmap id="LauncherIcon" filename="launcher_icon.png"/>
+    <!-- Player "Menu" custom button: normal and highlighted sizes -->
+    <bitmap id="MenuIcon" filename="menu_icon.png"/>
+    <bitmap id="MenuDetail" filename="menu_detail.png"/>
 </drawables>

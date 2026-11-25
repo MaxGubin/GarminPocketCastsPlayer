@@ -1,5 +1,7 @@
+import Toybox.Application;
 import Toybox.Communications;
 import Toybox.Lang;
+import Toybox.Media;
 
 // Thin wrapper over the (unofficial) Pocket Casts web API, as used by the
 // Pocket Casts web player and open-source mobile apps.
@@ -36,6 +38,68 @@ class PocketCastsApi {
         post("/sync/update_episode",
              {"uuid" => uuid, "podcast" => podcast, "position" => position, "status" => status},
              true, callback);
+    }
+
+    // Speed server (server/), from the app settings. Without both a URL and
+    // an API key, episodes are downloaded as original files.
+    function hasAudioService() {
+        return serviceUrl() != null && serviceKey() != null;
+    }
+
+    // Settings value, or null if empty.
+    hidden function setting(key) {
+        var v = Application.Properties.getValue(key);
+        if (v == null) {
+            return null;
+        }
+        v = v.toString();
+        return v.length() > 0 ? v : null;
+    }
+
+    // Base URL from the settings, accepting it with or without a trailing
+    // "/" or "/audio".
+    hidden function serviceUrl() {
+        var url = setting("serviceUrl");
+        if (url == null) {
+            return null;
+        }
+        while (url.length() > 0 && url.substring(url.length() - 1, url.length()).equals("/")) {
+            url = url.substring(0, url.length() - 1);
+        }
+        if (url.length() >= 6 && url.substring(url.length() - 6, url.length()).equals("/audio")) {
+            url = url.substring(0, url.length() - 6);
+        }
+        return url.length() > 0 ? url : null;
+    }
+
+    hidden function serviceKey() {
+        return setting("serviceKey");
+    }
+
+    // Episode audio converted by the speed service: sped up by speedPercent
+    // (100 = 1.0x), re-encoded as MP3 at kbps. Always MP3.
+    function downloadConverted(url, speedPercent, kbps, progress, callback) {
+        Communications.makeWebRequest(serviceUrl() + "/audio", {
+            "url" => url,
+            "speed" => (speedPercent / 100.0).format("%.2f"),
+            "kbps" => kbps
+        }, {
+            :method => Communications.HTTP_REQUEST_METHOD_GET,
+            :headers => {"X-Api-Key" => serviceKey()},
+            :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_AUDIO,
+            :mediaEncoding => Media.ENCODING_MP3,
+            :fileDownloadProgressCallback => progress
+        }, callback);
+    }
+
+    // Episode audio straight from the podcast host.
+    function downloadOriginal(url, encoding, progress, callback) {
+        Communications.makeWebRequest(url, null, {
+            :method => Communications.HTTP_REQUEST_METHOD_GET,
+            :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_AUDIO,
+            :mediaEncoding => encoding,
+            :fileDownloadProgressCallback => progress
+        }, callback);
     }
 
     hidden function post(path, body, authenticated, callback) {

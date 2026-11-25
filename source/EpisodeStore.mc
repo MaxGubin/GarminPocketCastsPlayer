@@ -11,6 +11,13 @@ import Toybox.Lang;
 //     "ref"     media cache ContentRef id once downloaded, else null
 //     "pos"     resume position in seconds
 //     "done"    true once played to the end on the watch
+//     "speed"   speed of the downloaded file in percent (100 = original
+//               timing, 150 = converted to 1.5x by the speed service)
+//     "kbps"    bitrate requested from the speed service, null for originals
+//
+// "pos" is always in the episode's real timeline, as Pocket Casts uses it.
+// The player works in the file's timeline; at 150 %, 20:00 in the file is
+// 30:00 in the episode. toFileTime / toEpisodeTime convert between them.
 // "pending": Dictionary uuid -> {"podcast", "position", "status"} of progress
 //            updates not yet sent to Pocket Casts (sent on next sync).
 module EpisodeStore {
@@ -20,6 +27,8 @@ module EpisodeStore {
     const KEY_PENDING = "pending";
     const KEY_ERROR = "lastError";
     const KEY_RESULT = "lastResult";
+    const KEY_NOW = "nowRef";
+    const KEY_PLAYING = "playing";
 
     // Pocket Casts playing status values
     const STATUS_IN_PROGRESS = 2;
@@ -53,13 +62,31 @@ module EpisodeStore {
 
     // Outcome of the last completed sync, shown on the sync screen:
     // {"downloaded" => new this sync, "failed" => failed downloads,
-    //  "onWatch" => episodes on the watch, "queued" => episodes targeted}.
+    //  "onWatch" => episodes on the watch, "queued" => episodes targeted,
+    //  "serviceError" => speed server error code if it failed, else null}.
     function getLastResult() {
         return Application.Storage.getValue(KEY_RESULT);
     }
 
     function setLastResult(result) {
         Application.Storage.setValue(KEY_RESULT, result);
+    }
+
+    // Episode the player last started, and whether it is playing right now.
+    // There is no API to ask the player, so this is tracked from onSong events.
+    function setNowPlaying(refId, playing) {
+        if (refId != null) {
+            Application.Storage.setValue(KEY_NOW, refId);
+        }
+        Application.Storage.setValue(KEY_PLAYING, playing);
+    }
+
+    function getNowRef() {
+        return Application.Storage.getValue(KEY_NOW);
+    }
+
+    function isPlaying() {
+        return Application.Storage.getValue(KEY_PLAYING) == true;
     }
 
     function getEpisodes() {
@@ -92,16 +119,33 @@ module EpisodeStore {
         return out;
     }
 
+    function speedOf(ep) {
+        var s = ep["speed"];
+        return (s == null || s <= 0) ? 100 : s;
+    }
+
+    // Episode seconds -> seconds in the downloaded file.
+    function toFileTime(ep, seconds) {
+        return (seconds * 100) / speedOf(ep);
+    }
+
+    // Seconds in the downloaded file -> episode seconds.
+    function toEpisodeTime(ep, seconds) {
+        return (seconds * speedOf(ep)) / 100;
+    }
+
+    // Resume position for the player, in the file's timeline.
     function getPosition(uuid) {
         var ep = findByUuid(getEpisodes(), uuid);
         if (ep == null || ep["pos"] == null) {
             return 0;
         }
-        return ep["pos"];
+        return toFileTime(ep, ep["pos"]);
     }
 
-    // Called from playback events. Updates local resume position and queues
-    // the change for upload to Pocket Casts.
+    // Called from playback events with the player's position (file timeline).
+    // Updates the local resume position and queues it for upload to Pocket
+    // Casts, both converted to the episode's timeline.
     function recordProgress(refId, position, finished) {
         if (refId == null) {
             return;
@@ -110,8 +154,8 @@ module EpisodeStore {
         for (var i = 0; i < eps.size(); i++) {
             var ep = eps[i];
             if (ep["ref"] != null && refId.equals(ep["ref"])) {
-                if (position != null) {
-                    ep["pos"] = position;
+                if (position != null && position >= 0) {
+                    ep["pos"] = toEpisodeTime(ep, position);
                 }
                 if (finished) {
                     ep["done"] = true;

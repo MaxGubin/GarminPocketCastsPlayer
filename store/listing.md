@@ -6,7 +6,7 @@ Image:   `store/store_icon.png` (500x500)
 ## Upload form
 - **Beta app:** yes (only visible to the uploading account)
 - **Title:** Podcast Sync
-- **Version:** 0.4
+- **Version:** 0.8 (must match `APP_VERSION` in `source/Version.mc`)
 - **Category:** Music (audio content provider)
 - **Description:**
   Syncs your podcast Up Next queue to the watch over Wi-Fi and plays it in the
@@ -15,8 +15,23 @@ Image:   `store/store_icon.png` (500x500)
 
   Setup: in Garmin Connect, open this app's settings and enter your account
   email and password and the number of episodes to keep on the watch (1–20).
+  For play speed and bitrate, also enter the speed server URL and API key.
   Then on the watch: Music → Music Providers → Podcast Sync → Sync.
 
+- **What's new (0.8):** Speed server URL and API key are app settings. The menu
+  shows "Speed server failed" (e.g. wrong API key) when episodes had to be
+  downloaded at 1.0x instead. New "About" menu item with the version and the
+  current speed and bitrate.
+- **What's new (0.7):** Play speed (1.0x–2.0x) and MP3 bitrate (64/128 kbps)
+  settings. Episodes are converted by a speed server; positions are converted
+  so the watch and Pocket Casts stay in step. Falls back to the original file
+  if the server can't be reached.
+- **What's new (0.6):** A "Podcasts" button in the player opens a menu with
+  "Sync now" and "Episodes", to pick which downloaded episode to play. Replaces
+  the Library button, which had no icon.
+- **What's new (0.5):** While an episode is playing, opening the app goes straight
+  to the player instead of the menu, and playback continues with the last
+  episode played rather than the first in the queue.
 - **What's new (0.4):** The Podcasts menu refreshes after a sync, so the episode
   count and "Last: N new" are current.
 - **What's new (0.3):** The Podcasts menu now has "Sync now" even when episodes are

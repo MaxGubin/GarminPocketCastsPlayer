@@ -1,5 +1,6 @@
 import Toybox.Lang;
 import Toybox.Media;
+import Toybox.System;
 
 // Plays downloaded, unfinished episodes in Up Next order, resuming each at
 // its saved position.
@@ -8,9 +9,22 @@ class PodcastContentIterator extends Media.ContentIterator {
     hidden var _episodes;
     hidden var _index = 0;
 
-    function initialize() {
+    // startRef: episode to start with, or null for the one played last.
+    function initialize(startRef) {
         ContentIterator.initialize();
         _episodes = EpisodeStore.getPlayable();
+        // Continue with the chosen episode, or the one that was playing last,
+        // rather than always the first.
+        var now = startRef != null ? startRef : EpisodeStore.getNowRef();
+        System.println("[iter] startRef=" + startRef + " nowRef=" + EpisodeStore.getNowRef() + " playable=" + _episodes.size());
+        if (now != null) {
+            for (var i = 0; i < _episodes.size(); i++) {
+                if (now.equals(_episodes[i]["ref"])) {
+                    _index = i;
+                    break;
+                }
+            }
+        }
     }
 
     function canSkip() {
@@ -29,8 +43,8 @@ class PodcastContentIterator extends Media.ContentIterator {
             Media.PLAYBACK_CONTROL_SKIP_FORWARD,
             Media.PLAYBACK_CONTROL_PREVIOUS,
             Media.PLAYBACK_CONTROL_NEXT,
-            // Opens the playback configuration menu (Play / Sync now).
-            Media.PLAYBACK_CONTROL_LIBRARY
+            // Opens the app's menu: Sync now, choose an episode.
+            new MenuButton()
         ];
         profile.attemptSkipAfterThumbsDown = false;
         profile.requirePlaybackNotification = false;
