@@ -3,32 +3,57 @@ import Toybox.Communications;
 import Toybox.Lang;
 import Toybox.Media;
 import Toybox.PersistedContent;
-import Toybox.System;
+
+// The running sync, if any. Global rather than a delegate field: the system
+// can call onStopSync on a different delegate instance than onStartSync.
+var gSyncJob = null;
+
+// Sync started by the user from the app.
+function startManualSync() as Void {
+    Log.line("sync", "manual sync requested");
+    Media.startSync();
+}
 
 // Invoked by the system when the user starts a sync (normally over Wi-Fi).
-class PodcastSyncDelegate extends Communications.SyncDelegate {
-
-    hidden var _job;
+//
+// Uses the older Media sync API (Media.SyncDelegate, Media.notifySync*,
+// Media.startSync), deprecated in favour of the Communications versions.
+// With the Communications API, syncs the watch starts on the charger showed
+// no progress and stayed "syncing" after notifySyncComplete; audio content
+// providers predate that API, so the firmware may only follow the Media one
+// there. Deprecated, not removed: still in SDK 9.3 for all listed products.
+class PodcastSyncDelegate extends Media.SyncDelegate {
 
     function initialize() {
         SyncDelegate.initialize();
     }
 
     function onStartSync() as Void {
-        _job = new SyncJob();
-        _job.start();
+        Log.line("sync", "onStartSync");
+        if (gSyncJob != null) {
+            gSyncJob.cancel();   // leftover from a sync that never finished
+        }
+        gSyncJob = new SyncJob();
+        gSyncJob.start();
     }
 
+    // Asked by the watch before every sync; when false, the sync doesn't
+    // run. There is no cheap way to know whether Up Next changed, so always
+    // sync.
     function isSyncNeeded() as Boolean {
+        Log.line("sync", "isSyncNeeded -> true");
         return true;
     }
 
     function onStopSync() as Void {
-        if (_job != null) {
-            _job.cancel();
+        Log.line("sync", "onStopSync");
+        if (gSyncJob != null) {
+            gSyncJob.cancel();
+            gSyncJob = null;
         }
         Communications.cancelAllRequests();
-        Communications.notifySyncComplete("Sync cancelled");
+        Media.notifySyncComplete("Sync cancelled");
+        Log.line("sync", "notifySyncComplete(Sync cancelled)");
     }
 }
 
@@ -58,13 +83,14 @@ class SyncJob {
     hidden var _kbps = 64;       // wanted bitrate (settings)
     hidden var _viaService = false;  // current download goes through the speed service
     hidden var _serviceError = null; // last speed server error code this sync
+    hidden var _loggedProgress = -10;
 
     function initialize() {
         _api = new PocketCastsApi();
     }
 
     function start() {
-        log("sync start");
+        log("sync start, version " + APP_VERSION);
         ensureLogin(method(:pushProgress));
     }
 
@@ -165,7 +191,7 @@ class SyncJob {
 
     function fetchUpNext() as Void {
         if (_cancelled) { return; }
-        Communications.notifySyncProgress(5);
+        progress(5);
         _api.upNext(method(:onUpNext));
     }
 
@@ -202,7 +228,7 @@ class SyncJob {
             reconcile();
             return;
         }
-        Communications.notifySyncProgress(5 + (5 * _targets.size()) / _max);
+        progress(5 + (5 * _targets.size()) / _max);
         var e = _remote[_remoteIdx];
         _api.episode(e["uuid"], e["podcast"], method(:onDetail));
     }
@@ -291,10 +317,17 @@ class SyncJob {
         startDownload(ep);
     }
 
+    // URL of the episode downloaded after the current one, for the speed
+    // service to convert while this one downloads.
+    hidden function nextUrl() {
+        var i = _dlIdx + 1;
+        return i < _toDownload.size() ? _targets[_toDownload[i]]["url"] : null;
+    }
+
     hidden function startDownload(ep) {
         if (_viaService) {
             log("download " + ep["title"] + " via service at " + _speed + "% " + _kbps + " kbps");
-            _api.downloadConverted(ep["url"], _speed, _kbps,
+            _api.downloadConverted(ep["url"], nextUrl(), _speed, _kbps,
                 method(:onDownloadProgress), method(:onDownloaded));
         } else {
             log("download " + ep["title"] + " (original)");
@@ -316,12 +349,20 @@ class SyncJob {
     function onDownloadProgress(bytes as Number, total as Number?) as Void {
         var frac = (total == null || total == 0) ? 0.0 : bytes.toFloat() / total;
         var overall = (_dlIdx + frac) / _toDownload.size();
-        Communications.notifySyncProgress((10 + 90 * overall).toNumber());
+        progress((10 + 90 * overall).toNumber());
     }
 
     function onDownloaded(code as Number, data as Null or ByteArray or Dictionary or String or PersistedContent.Iterator) as Void {
         if (_cancelled) { return; }
         log("download -> " + code);
+        if (code == Communications.REQUEST_CANCELLED) {
+            // Cancelled by the system without onStopSync (which would have
+            // set _cancelled first). Don't fall back to the original; end
+            // the sync, or the watch keeps waiting for it.
+            restoreOld(_targets[_toDownload[_dlIdx]]);
+            fail("Sync was interrupted. Try again");
+            return;
+        }
         var ep = _targets[_toDownload[_dlIdx]];
         if (code == 200 && data != null) {
             ep["ref"] = (data as Media.ContentRef).getId();
@@ -385,7 +426,7 @@ class SyncJob {
 
     hidden function finish() {
         log("sync done, failed=" + _failed);
-        Communications.notifySyncProgress(100);
+        progress(100);
         var onWatch = 0;
         for (var i = 0; i < _targets.size(); i++) {
             if (_targets[i]["ref"] != null) { onWatch++; }
@@ -401,20 +442,34 @@ class SyncJob {
             var msg = "Downloaded " + (_toDownload.size() - _failed) + " of "
                 + _toDownload.size() + " episodes, " + _failed + " failed";
             EpisodeStore.setLastError(msg);
-            Communications.notifySyncComplete(msg);
+            complete(msg);
         } else {
             EpisodeStore.setLastError(null);
-            Communications.notifySyncComplete(null);
+            complete(null);
         }
     }
 
     hidden function fail(message) {
         log("sync failed: " + message);
         EpisodeStore.setLastError(message);
-        Communications.notifySyncComplete(message);
+        complete(message);
     }
 
     hidden function log(msg) {
-        System.println("[sync] " + msg);
+        Log.line("sync", msg);
+    }
+
+    // Reports progress to the watch; logged in steps of 10 %.
+    hidden function progress(percent) {
+        if (percent / 10 != _loggedProgress / 10) {
+            _loggedProgress = percent;
+            log("progress " + percent + "%");
+        }
+        Media.notifySyncProgress(percent);
+    }
+
+    hidden function complete(message) {
+        Media.notifySyncComplete(message);
+        log("notifySyncComplete(" + (message == null ? "null" : message) + ")");
     }
 }

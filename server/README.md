@@ -92,13 +92,27 @@ gcloud storage buckets update gs://$BUCKET --lifecycle-file=lifecycle.json
 # Shared secret; enter the same value in the watch app settings
 API_KEY=$(openssl rand -hex 24); echo "API key: $API_KEY"
 
+# Run from this folder (server/), which has the Dockerfile. From the repo
+# root, Cloud Build finds no Dockerfile, tries Python buildpacks and fails
+# with "provide a main.py or app.py file".
 gcloud run deploy podcast-speed --source . --region $REGION \
     --service-account $SA \
     --allow-unauthenticated \
     --set-env-vars API_KEY=$API_KEY,CACHE_BUCKET=$BUCKET \
-    --cpu 2 --memory 2Gi --timeout 900 --concurrency 4 \
-    --min-instances 0 --max-instances 2 --cpu-boost
+    --cpu 2 --memory 2Gi --timeout 900 --concurrency 8 \
+    --min-instances 0 --max-instances 1 --cpu-boost --no-cpu-throttling
 ```
+
+`--max-instances 1` keeps all requests on one instance, so that a request
+for an episode that is already being converted (a watch retry, or the
+background conversion of `next`) waits for that conversion instead of
+starting a second one. One instance with 2 vCPUs converts two episodes at
+once.
+
+`--no-cpu-throttling` keeps the CPU available between requests, which the
+background conversion of the next episode needs. Cloud Run then bills the
+instance for as long as it runs (it shuts down about 15 minutes after the
+last request), still within the free tier for a daily sync.
 
 `--allow-unauthenticated` is needed because the watch can't send Google
 credentials; the `API_KEY` check protects the service instead.
@@ -136,11 +150,18 @@ curl -sS -o fast.mp3 -H 'X-Api-Key: test' --get \
 | `url` | required | Original episode audio URL (http/https) |
 | `speed` | default 1.0 | 0.5 to 3.0 |
 | `kbps` | default 64 | MP3 bitrate, 32 to 128 (mono) |
+| `next` | optional | URL of the next episode, converted ahead in the background |
 | `key` | | API key, if not sent as the `X-Api-Key` header |
 
 Responses: `302` to the converted file (with `CACHE_BUCKET`), or the MP3
 itself (without it); `400` bad parameters; `401` wrong key; `502` the episode
 couldn't be downloaded or converted.
+
+`next` (optional) is the URL of the episode the watch will request after this
+one. The service converts it in the background while the watch downloads the
+current file, so the next request is answered from the cache. That halves the
+sync time, roughly: without it the watch waits for ffmpeg (about 30 s for an
+hour-long episode) before every download.
 
 ## Cost
 

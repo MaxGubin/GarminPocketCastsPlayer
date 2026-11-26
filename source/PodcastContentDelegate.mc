@@ -24,7 +24,7 @@ class PodcastContentDelegate extends Media.ContentDelegate {
 
     // Save resume position whenever playback leaves an episode or pauses.
     function onSong(contentRefId, songEvent, playbackPosition) {
-        System.println("[play] ref=" + contentRefId + " event=" + songEvent + " pos=" + playbackPosition);
+        Log.line("play", "ref=" + contentRefId + " event=" + songEvent + " pos=" + playbackPosition);
         if (songEvent == Media.SONG_EVENT_START || songEvent == Media.SONG_EVENT_RESUME) {
             EpisodeStore.setNowPlaying(contentRefId, true);
         } else if (songEvent == Media.SONG_EVENT_PAUSE

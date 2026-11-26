@@ -13,14 +13,25 @@ class PodcastSyncApp extends Application.AudioContentProviderApp {
         AudioContentProviderApp.initialize();
     }
 
+    function onStart(state) as Void {
+        Log.line("app", "start, version " + APP_VERSION);
+    }
+
+    function onStop(state) as Void {
+        Log.line("app", "stop");
+    }
+
     // arg: ContentRef id of the episode to start with (from the Episodes
     // menu), or null to continue with the last played episode.
     function getContentDelegate(arg) {
         return new PodcastContentDelegate(arg);
     }
 
+    // The delegate extends the older Media.SyncDelegate (see
+    // PodcastSyncDelegate); the SDK types this method for the newer
+    // Communications.SyncDelegate, hence the cast.
     function getSyncDelegate() {
-        return new PodcastSyncDelegate();
+        return new PodcastSyncDelegate() as Communications.SyncDelegate;
     }
 
     function getSyncConfigurationView() {

@@ -59,7 +59,7 @@ class SyncConfigDelegate extends WatchUi.BehaviorDelegate {
     }
 
     function onSelect() {
-        Communications.startSync();
+        startManualSync();
         return true;
     }
 }
@@ -132,7 +132,7 @@ class PlayerMenuDelegate extends WatchUi.Menu2InputDelegate {
         if (id == :error) {
             WatchUi.pushView(new ErrorView(), new WatchUi.BehaviorDelegate(), WatchUi.SLIDE_LEFT);
         } else if (id == :sync) {
-            Communications.startSync();
+            startManualSync();
         } else if (id == :about) {
             WatchUi.pushView(new AboutView(), new WatchUi.BehaviorDelegate(), WatchUi.SLIDE_LEFT);
         } else if (id == :speedError) {

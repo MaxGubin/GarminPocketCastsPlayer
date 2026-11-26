@@ -4,18 +4,30 @@ The watch asks for an episode at a given speed; this service downloads the
 original audio, speeds it up with ffmpeg (pitch preserved), re-encodes it as
 mono MP3 for speech, and returns it.
 
-    GET /audio?url=<original audio URL>&speed=1.5[&kbps=64]
+    GET /audio?url=<original audio URL>&speed=1.5[&kbps=64][&next=<URL>]
     Header: X-Api-Key: <API_KEY>   (or &key=<API_KEY> in the query)
+
+`next` is the episode the watch will ask for after this one. It is converted
+in the background (same speed and bitrate) while the watch downloads this one,
+so the next request is answered from the cache. Background work needs CPU
+outside requests: deploy with --no-cpu-throttling.
 
 With CACHE_BUCKET set (recommended on Cloud Run), the result is stored in
 Cloud Storage and the response is a 302 redirect to a short-lived signed URL.
 That avoids Cloud Run's 32 MiB response limit, gives the watch a
 Content-Length for its progress bar, and makes repeat requests instant.
-Without CACHE_BUCKET (local testing) the file is returned directly.
+Without CACHE_BUCKET (local testing) files are cached in CACHE_DIR and
+returned directly.
+
+Requests for a file that is already being converted wait for that conversion
+instead of starting another one. The watch retries a request it has waited on
+for about 45 s, and a `next` conversion can still be running when the watch
+asks for that episode.
 
 Environment:
     API_KEY        required; shared secret, also set in the watch app settings
     CACHE_BUCKET   optional; Cloud Storage bucket name for converted files
+    CACHE_DIR      local cache without CACHE_BUCKET (default /tmp/podcast-speed)
     PORT           set by Cloud Run (default 8080)
 """
 
@@ -23,16 +35,20 @@ import hashlib
 import hmac
 import logging
 import os
+import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from datetime import timedelta
 from urllib.parse import urlparse
 
-from flask import Flask, abort, redirect, request, send_file
+from flask import Flask, abort, jsonify, redirect, request, send_file
 
 API_KEY = os.environ.get("API_KEY", "")
 CACHE_BUCKET = os.environ.get("CACHE_BUCKET", "")
+CACHE_DIR = os.environ.get("CACHE_DIR", "/tmp/podcast-speed")
+LOCAL_CACHE_MAX_AGE_S = 24 * 3600
 
 MIN_SPEED, MAX_SPEED = 0.5, 3.0
 MIN_KBPS, MAX_KBPS, DEFAULT_KBPS = 32, 128, 64
@@ -45,6 +61,11 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("speed")
 
 _bucket = None
+
+# Conversions in progress in this process: cache name -> threading.Event,
+# set when the conversion has finished (successfully or not).
+_inflight = {}
+_inflight_lock = threading.Lock()
 
 
 def bucket():
@@ -98,6 +119,22 @@ def parse_args():
     return url, speed, kbps
 
 
+def parse_next():
+    """Optional `next` URL; ignored if it isn't a valid http(s) URL."""
+    url = request.args.get("next", "")
+    parsed = urlparse(url)
+    return url if parsed.scheme in ("http", "https") and parsed.netloc else None
+
+
+def convert_in_background(url, speed, kbps):
+    def run():
+        try:
+            ensure_converted(url, speed, kbps, cache_name(url, speed, kbps))
+        except Exception as e:  # abort() raises too; nobody is waiting for the answer
+            log.warning("background conversion of %s failed: %s", url, e)
+    threading.Thread(target=run, daemon=True).start()
+
+
 def convert(url, speed, kbps, out_path):
     """Stream the original straight into ffmpeg, so conversion overlaps the
     download. Only the first audio stream is kept (drops cover art); tags such
@@ -126,6 +163,64 @@ def convert(url, speed, kbps, out_path):
              os.path.getsize(out_path))
 
 
+def cache_name(url, speed, kbps):
+    return "audio/" + hashlib.sha256(f"{url}|{speed}|{kbps}".encode()).hexdigest() + ".mp3"
+
+
+def local_path(name):
+    return os.path.join(CACHE_DIR, os.path.basename(name))
+
+
+def is_cached(name):
+    if CACHE_BUCKET:
+        return bucket().blob(name).exists()
+    return os.path.exists(local_path(name))
+
+
+def store(name, path):
+    if CACHE_BUCKET:
+        bucket().blob(name).upload_from_filename(path, content_type="audio/mpeg")
+        return
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    # Local cache: drop files older than a day so it doesn't grow forever.
+    for f in os.listdir(CACHE_DIR):
+        p = os.path.join(CACHE_DIR, f)
+        if time.time() - os.path.getmtime(p) > LOCAL_CACHE_MAX_AGE_S:
+            os.remove(p)
+    shutil.move(path, local_path(name))
+
+
+def ensure_converted(url, speed, kbps, name):
+    """Make sure the converted file is in the cache. If another request is
+    already converting it, wait for that instead of converting it twice."""
+    if is_cached(name):
+        log.info("cache hit %s", name)
+        return
+    with _inflight_lock:
+        done = _inflight.get(name)
+        owner = done is None
+        if owner:
+            done = threading.Event()
+            _inflight[name] = done
+    if not owner:
+        log.info("waiting for conversion in progress %s", name)
+        done.wait(FFMPEG_TIMEOUT_S + 60)
+        if not is_cached(name):
+            abort(502, "could not convert the episode")
+        return
+    try:
+        if is_cached(name):   # finished between the first check and the lock
+            return
+        with tempfile.TemporaryDirectory() as tmp:  # /tmp on Cloud Run is in memory
+            out_path = os.path.join(tmp, "out.mp3")
+            convert(url, speed, kbps, out_path)
+            store(name, out_path)
+    finally:
+        with _inflight_lock:
+            del _inflight[name]
+        done.set()
+
+
 @app.get("/")
 def health():
     return "ok"
@@ -135,26 +230,14 @@ def health():
 def audio():
     check_key()
     url, speed, kbps = parse_args()
-    name = "audio/" + hashlib.sha256(f"{url}|{speed}|{kbps}".encode()).hexdigest() + ".mp3"
-
+    nxt = parse_next()
+    if nxt and nxt != url:
+        convert_in_background(nxt, speed, kbps)
+    name = cache_name(url, speed, kbps)
+    ensure_converted(url, speed, kbps, name)
     if CACHE_BUCKET:
-        blob = bucket().blob(name)
-        if blob.exists():
-            log.info("cache hit %s", name)
-            return redirect(signed_url(blob), code=302)
-
-    with tempfile.TemporaryDirectory() as tmp:  # /tmp on Cloud Run is in memory
-        out_path = os.path.join(tmp, "out.mp3")
-        convert(url, speed, kbps, out_path)
-        if CACHE_BUCKET:
-            blob.upload_from_filename(out_path, content_type="audio/mpeg")
-            return redirect(signed_url(blob), code=302)
-        # Local testing: send the file itself. Read it into memory first,
-        # because the temporary directory is deleted when this block exits.
-        with open(out_path, "rb") as f:
-            data = f.read()
-    from io import BytesIO
-    return send_file(BytesIO(data), mimetype="audio/mpeg", download_name="episode.mp3")
+        return redirect(signed_url(bucket().blob(name)), code=302)
+    return send_file(local_path(name), mimetype="audio/mpeg", download_name="episode.mp3")
 
 
 if __name__ == "__main__":

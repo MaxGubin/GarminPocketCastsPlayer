@@ -16,7 +16,7 @@ class PodcastContentIterator extends Media.ContentIterator {
         // Continue with the chosen episode, or the one that was playing last,
         // rather than always the first.
         var now = startRef != null ? startRef : EpisodeStore.getNowRef();
-        System.println("[iter] startRef=" + startRef + " nowRef=" + EpisodeStore.getNowRef() + " playable=" + _episodes.size());
+        Log.line("iter", "startRef=" + startRef + " nowRef=" + EpisodeStore.getNowRef() + " playable=" + _episodes.size());
         if (now != null) {
             for (var i = 0; i < _episodes.size(); i++) {
                 if (now.equals(_episodes[i]["ref"])) {

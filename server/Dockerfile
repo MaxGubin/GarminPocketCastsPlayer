@@ -14,5 +14,7 @@ COPY main.py .
 # needs no shell to expand it, and gunicorn gets stop signals directly.
 ENV PORT=8080
 
-# One process; each thread handles one conversion. Matches --concurrency 4.
-CMD ["gunicorn", "--workers", "1", "--threads", "4", "--timeout", "0", "main:app"]
+# One process, so requests for the same episode share one conversion. Threads
+# mostly wait (on ffmpeg, or on another thread's conversion). Matches
+# --concurrency 8.
+CMD ["gunicorn", "--workers", "1", "--threads", "8", "--timeout", "0", "main:app"]

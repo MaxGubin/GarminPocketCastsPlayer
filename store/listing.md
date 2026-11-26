@@ -6,7 +6,7 @@ Image:   `store/store_icon.png` (500x500)
 ## Upload form
 - **Beta app:** yes (only visible to the uploading account)
 - **Title:** Podcast Sync
-- **Version:** 0.8 (must match `APP_VERSION` in `source/Version.mc`)
+- **Version:** 0.15 (must match `APP_VERSION` in `source/Version.mc`)
 - **Category:** Music (audio content provider)
 - **Description:**
   Syncs your podcast Up Next queue to the watch over Wi-Fi and plays it in the
@@ -18,6 +18,14 @@ Image:   `store/store_icon.png` (500x500)
   For play speed and bitrate, also enter the speed server URL and API key.
   Then on the watch: Music → Music Providers → Podcast Sync → Sync.
 
+- **What's new (0.15):** Syncs that the watch starts while charging now show
+  progress and finish properly; before, they showed no progress and could
+  stay "syncing" after all episodes were downloaded. Cancelling a sync no
+  longer keeps downloading in the background.
+- **What's new (0.11):** Fixing sync when charging
+- **What's new (0.10):** Faster sync with the speed server: it converts the next
+  episode while the watch downloads the current one, and converts each episode
+  only once.
 - **What's new (0.8):** Speed server URL and API key are app settings. The menu
   shows "Speed server failed" (e.g. wrong API key) when episodes had to be
   downloaded at 1.0x instead. New "About" menu item with the version and the

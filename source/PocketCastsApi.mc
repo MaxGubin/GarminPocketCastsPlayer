@@ -76,14 +76,24 @@ class PocketCastsApi {
         return setting("serviceKey");
     }
 
-    // Episode audio converted by the speed service: sped up by speedPercent
-    // (100 = 1.0x), re-encoded as MP3 at kbps. Always MP3.
-    function downloadConverted(url, speedPercent, kbps, progress, callback) {
-        Communications.makeWebRequest(serviceUrl() + "/audio", {
+    hidden function serviceParams(url, speedPercent, kbps) {
+        return {
             "url" => url,
             "speed" => (speedPercent / 100.0).format("%.2f"),
             "kbps" => kbps
-        }, {
+        };
+    }
+
+    // Episode audio converted by the speed service: sped up by speedPercent
+    // (100 = 1.0x), re-encoded as MP3 at kbps. Always MP3. nextUrl (or null)
+    // is the episode that will be downloaded after this one; the service
+    // converts it in the background meanwhile.
+    function downloadConverted(url, nextUrl, speedPercent, kbps, progress, callback) {
+        var params = serviceParams(url, speedPercent, kbps);
+        if (nextUrl != null) {
+            params["next"] = nextUrl;
+        }
+        Communications.makeWebRequest(serviceUrl() + "/audio", params, {
             :method => Communications.HTTP_REQUEST_METHOD_GET,
             :headers => {"X-Api-Key" => serviceKey()},
             :responseType => Communications.HTTP_RESPONSE_CONTENT_TYPE_AUDIO,
