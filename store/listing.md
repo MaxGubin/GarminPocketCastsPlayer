@@ -6,7 +6,7 @@ Image:   `store/store_icon.png` (500x500)
 ## Upload form
 - **Beta app:** yes (only visible to the uploading account)
 - **Title:** Podcast Sync
-- **Version:** 0.15 (must match `APP_VERSION` in `source/Version.mc`)
+- **Version:** 0.18 (must match `APP_VERSION` in `source/Version.mc`)
 - **Category:** Music (audio content provider)
 - **Description:**
   Syncs your podcast Up Next queue to the watch over Wi-Fi and plays it in the
@@ -18,6 +18,8 @@ Image:   `store/store_icon.png` (500x500)
   For play speed and bitrate, also enter the speed server URL and API key.
   Then on the watch: Music → Music Providers → Podcast Sync → Sync.
 
+- **What's new (0.18):** "Sync now" in the Podcasts menu shows when the last
+  sync finished: the time for a sync today, otherwise the date.
 - **What's new (0.15):** Syncs that the watch starts while charging now show
   progress and finish properly; before, they showed no progress and could
   stay "syncing" after all episodes were downloaded. Cancelling a sync no

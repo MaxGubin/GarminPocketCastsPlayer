@@ -3,6 +3,9 @@ import Toybox.Communications;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Media;
+import Toybox.System;
+import Toybox.Time;
+import Toybox.Time.Gregorian;
 import Toybox.WatchUi;
 
 // Draws `text` word-wrapped to fit inside the round screen.
@@ -107,8 +110,13 @@ class PlayerMenu extends WatchUi.Menu2 {
             add(new WatchUi.MenuItem("Last sync failed", error, :error, null));
         }
         var result = EpisodeStore.getLastResult();
-        var syncSub = (result != null && error == null)
-            ? "Last: " + result["downloaded"] + " new" : "Needs Wi-Fi";
+        var syncSub = "Hasn't synced";
+        if (result != null) {
+            // Last completed sync; a later failure shows as its own item.
+            var when = result["time"];
+            syncSub = "Last: " + (when != null ? syncTimeText(when) + ", " : "")
+                + result["downloaded"] + " new";
+        }
         if (result != null && result["serviceError"] != null) {
             // Downloads fell back to original files (1.0x).
             add(new WatchUi.MenuItem("Speed server failed", serviceErrorText(result["serviceError"]), :speedError, null));
@@ -120,6 +128,26 @@ class PlayerMenu extends WatchUi.Menu2 {
         add(new WatchUi.MenuItem("About", "Version " + APP_VERSION, :about, null));
         setFocus(0);
     }
+}
+
+// Local time of a sync for the menu: "14:05" (or "2:05 PM") if today,
+// else "Nov 25".
+function syncTimeText(seconds as Number) as String {
+    var t = Gregorian.info(new Time.Moment(seconds), Time.FORMAT_MEDIUM);
+    // Time.today() is local midnight. (Don't compare t.month between two
+    // info() results: with FORMAT_MEDIUM it is a String, and != on Strings
+    // compares references, so it is always "different".)
+    if (seconds < Time.today().value()) {
+        return t.month + " " + t.day;
+    }
+    var hour = t.hour;
+    if (System.getDeviceSettings().is24Hour) {
+        return hour.format("%02d") + ":" + t.min.format("%02d");
+    }
+    var suffix = hour < 12 ? " AM" : " PM";
+    hour = hour % 12;
+    if (hour == 0) { hour = 12; }
+    return hour + ":" + t.min.format("%02d") + suffix;
 }
 
 class PlayerMenuDelegate extends WatchUi.Menu2InputDelegate {

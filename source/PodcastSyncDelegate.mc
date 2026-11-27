@@ -3,6 +3,7 @@ import Toybox.Communications;
 import Toybox.Lang;
 import Toybox.Media;
 import Toybox.PersistedContent;
+import Toybox.Time;
 
 // The running sync, if any. Global rather than a delegate field: the system
 // can call onStopSync on a different delegate instance than onStartSync.
@@ -436,7 +437,8 @@ class SyncJob {
             "failed" => _failed,
             "onWatch" => onWatch,
             "queued" => _targets.size(),
-            "serviceError" => _serviceError
+            "serviceError" => _serviceError,
+            "time" => Time.now().value()
         });
         if (_failed > 0) {
             var msg = "Downloaded " + (_toDownload.size() - _failed) + " of "

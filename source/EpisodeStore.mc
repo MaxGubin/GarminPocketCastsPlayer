@@ -63,7 +63,9 @@ module EpisodeStore {
     // Outcome of the last completed sync, shown on the sync screen:
     // {"downloaded" => new this sync, "failed" => failed downloads,
     //  "onWatch" => episodes on the watch, "queued" => episodes targeted,
-    //  "serviceError" => speed server error code if it failed, else null}.
+    //  "serviceError" => speed server error code if it failed, else null,
+    //  "time" => when it finished, seconds since the epoch; missing in
+    //  results saved by older versions}.
     function getLastResult() {
         return Application.Storage.getValue(KEY_RESULT);
     }
